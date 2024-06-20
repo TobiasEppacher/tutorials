@@ -128,9 +128,6 @@ problem_params['remainingBoundary'] = remaining_boundary
 controller_params = dict()
 controller_params['logger_level'] = 30
 
-base_transfer_params = dict()
-base_transfer_params['finter'] = True
-
 # fill description dictionary for easy step instantiation
 description = dict()
 description['problem_class'] = fenics_heat_2d
@@ -154,6 +151,58 @@ f_N_function = interpolate(f_N, W)
 ##################################################################
 # preCICE coupling code
 ##################################################################
+
+solver_dt = pySDC_dt
+precice_dt = 0.1
+dt = Constant(0)
+
+# Initialize the adapter according to the specific participant
+precice = Adapter(adapter_config_filename="precice-adapter-config.json")
+precice.initialize(coupling_boundary, read_function_space=V, write_object=f_N_function)
+
+
+t = 0.0
+n = 0
+u_n = P.u_exact(t)
+u_n.values.rename("Temperature", "")
+
+while precice.is_coupling_ongoing():
+    
+    if precice.requires_writing_checkpoint():
+        precice.store_checkpoint(u_n, t, n)
+    
+    precice_dt = precice.get_max_time_step_size()
+    dt.assign(np.min([solver_dt, precice_dt]))
+    
+    read_data = precice.read_data(dt)
+    
+    controller.run(u_n, t, t+dt)
+    
+    precice.advance(dt)
+    
+precice.finalize()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##################################################################
+
+'''
+
 u_n = interpolate(P.get_u_D(), V)
 u_n.rename("Temperature", "")
 
@@ -172,7 +221,6 @@ precice_dt = precice.get_max_time_step_size()
 dt = Constant(0)
 dt.assign(np.min([pySDC_dt, precice_dt]))
 
-'''
 # Define variational problem
 u = TrialFunction(V)
 v = TestFunction(V)
@@ -180,7 +228,6 @@ v = TestFunction(V)
 f_sp = u_D_sp.diff(t_sp) - u_D_sp.diff(x_sp).diff(x_sp) - u_D_sp.diff(y_sp).diff(y_sp)
 f = Expression(sp.ccode(f_sp), degree=2, alpha=alpha, beta=beta, t=0)
 F = u * v / dt * dx + dot(grad(u), grad(v)) * dx - (u_n / dt + f) * v * dx
-'''
 
 u_D = P.get_u_D()
 bcs = [DirichletBC(V, u_D, remaining_boundary)]
@@ -195,9 +242,7 @@ if problem is ProblemType.NEUMANN:
     print("Neumann part not yet implemented")
     exit(1)
 
-'''
 a, L = lhs(F), rhs(F)
-'''
 
 # Time-stepping
 u_np1 = Function(V)
@@ -247,10 +292,6 @@ err = error_pointwise.copy()
 err.rename("err", "")
 error_write.append(err)
 
-# set t_1 = t_0 + dt, this gives u_D^1
-# call dt(0) to evaluate FEniCS Constant. Todo: is there a better way?
-u_D.t = t + dt(0)
-f.t = t + dt(0)
 
 if problem is ProblemType.DIRICHLET:
     flux = Function(V_g)
@@ -274,11 +315,7 @@ while precice.is_coupling_ongoing():
             error_out << error_pointwise
 
     precice_dt = precice.get_max_time_step_size()
-    dt.assign(np.min([fenics_dt, precice_dt]))
-
-    # Dirichlet BC and RHS need to point to end of current timestep
-    u_D.t = t + float(dt)
-    f.t = t + float(dt)
+    dt.assign(np.min([pySDC_dt, precice_dt]))
 
     # Coupling BC needs to point to end of current timestep
     read_data = precice.read_data(dt)
@@ -287,7 +324,7 @@ while precice.is_coupling_ongoing():
     precice.update_coupling_expression(coupling_expression, read_data)
 
     # Compute solution u^n+1, use bcs u_D^n+1, u^n and coupling bcs
-    solve(a == L, u_np1, bcs)
+    u_n, stats = controller.run(u_n, t, t+dt)
 
     # Write data to preCICE according to which problem is being solved
     if problem is ProblemType.DIRICHLET:
@@ -350,3 +387,4 @@ for sample in error_write:
 
 # Hold plot
 precice.finalize()
+'''

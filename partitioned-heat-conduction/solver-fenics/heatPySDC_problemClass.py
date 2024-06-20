@@ -127,8 +127,92 @@ class fenics_heat_2d(ptype):
         me = self.dtype_u(interpolate(self.u_D, self.V), val=self.V)
         return me
     
+    def set_coupling_boundary_expr(self, coupling_bc):
+        self.bc2 = coupling_bc
+    
     def get_f_N(self):
         return self.f_N
     
     def get_u_D(self):
         return self.u_D
+    
+    
+'''
+##### Test the class #####
+
+from problem_setup import get_geometry
+from my_enums import DomainPart
+
+from pySDC.implementations.sweeper_classes.imex_1st_order_mass import imex_1st_order_mass
+from pySDC.implementations.controller_classes.controller_nonMPI import controller_nonMPI
+
+import matplotlib.pyplot as plt
+
+# Get the mesh and boundaries
+domain_mesh, coupling_boundary, remaining_boundary = get_geometry(DomainPart.LEFT)
+
+# Define function space using mesh
+V = FunctionSpace(domain_mesh, 'P', 2)
+V_g = VectorFunctionSpace(domain_mesh, 'P', 1)
+W = V_g.sub(0).collapse()
+
+# Set timestep size
+pySDC_dt = 0.1
+
+# Create the problem parameters
+# initialize level parameters
+level_params = dict()
+level_params['restol'] = 1e-12
+level_params['dt'] = pySDC_dt
+
+# initialize step parameters
+step_params = dict()
+step_params['maxiter'] = 10
+
+# initialize sweeper parameters
+sweeper_params = dict()
+sweeper_params['quad_type'] = 'RADAU-RIGHT'
+sweeper_params['num_nodes'] = 4
+
+# initialize problem parameters
+problem_params = dict()
+problem_params['mesh'] = domain_mesh
+problem_params['functionSpace'] = V
+problem_params['t0'] = 0.0
+problem_params['couplingBoundary'] = coupling_boundary
+problem_params['remainingBoundary'] = remaining_boundary
+
+# initialize controller parameters
+controller_params = dict()
+controller_params['logger_level'] = 30
+
+# fill description dictionary for easy step instantiation
+description = dict()
+description['problem_class'] = fenics_heat_2d
+description['problem_params'] = problem_params
+description['sweeper_class'] = imex_1st_order_mass
+description['sweeper_params'] = sweeper_params
+description['level_params'] = level_params
+description['step_params'] = step_params
+
+# Controller for time stepping
+controller = controller_nonMPI(num_procs=1, controller_params=controller_params, description=description)
+
+# Reference to problem class for easy access to exact solution
+P = controller.MS[0].levels[0].prob
+
+u_init = P.u_exact(0.0)
+u_end, _ = controller.run(u_init, t0=0.0, Tend=1.0)
+u_ref = P.u_exact(1.0)
+
+# Compute the error
+err = abs(u_end - u_ref) / abs(u_ref)
+
+print(err)
+
+# Plot the solution
+plot(u_end.values)
+plt.show()
+'''
+
+
