@@ -49,6 +49,7 @@ class fenics_heat_2d(ptype):
         beta = 1.2
         self.beta = 1.2
         
+        # Create sympy expression of manufactured solution and its flux in x direction
         x_sp, y_sp, t_sp = sp.symbols(['x[0]', 'x[1]', 't'])
         u_D_sp = 1 + x_sp * x_sp + alpha * y_sp * y_sp + beta * t_sp
         self.u_D = Expression(sp.ccode(u_D_sp), degree=2, alpha=self.alpha, beta=self.beta, t=t0)
@@ -58,8 +59,8 @@ class fenics_heat_2d(ptype):
         def boundary(x, on_boundary):
             return on_boundary
         
-        self.bc1 = df.DirichletBC(self.V, self.u_D, remainingBoundary)
-        self.bc2 = df.DirichletBC(self.V, self.u_D, couplingBoundary)
+        self.remainingBC = df.DirichletBC(self.V, self.u_D, remainingBoundary)
+        self.couplingBC = df.DirichletBC(self.V, self.u_D, couplingBoundary)
         self.bc_hom = df.DirichletBC(self.V, df.Constant(0), boundary)
 
         # set forcing term as expression
@@ -76,10 +77,10 @@ class fenics_heat_2d(ptype):
 
         self.u_D.t = t
 
-        self.bc1.apply(T, b.values.vector())
-        self.bc2.apply(T, b.values.vector())
-        self.bc1.apply(b.values.vector())
-        self.bc2.apply(b.values.vector())
+        self.remainingBC.apply(T, b.values.vector())
+        self.couplingBC.apply(T, b.values.vector())
+        self.remainingBC.apply(b.values.vector())
+        self.couplingBC.apply(b.values.vector())
 
         df.solve(T, u.values.vector(), b.values.vector())
 
@@ -127,8 +128,8 @@ class fenics_heat_2d(ptype):
         me = self.dtype_u(interpolate(self.u_D, self.V), val=self.V)
         return me
     
-    def set_coupling_boundary_expr(self, coupling_bc):
-        self.bc2 = coupling_bc
+    def set_coupling_boundary(self, couplingBC):
+        self.couplingBC = couplingBC
     
     def get_f_N(self):
         return self.f_N
