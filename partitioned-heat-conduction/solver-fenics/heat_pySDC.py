@@ -144,12 +144,12 @@ F = u * v / dt * dx + dot(grad(u), grad(v)) * dx - (u_n / dt + f) * v * dx
 '''
 
 
-bcs = [DirichletBC(V, u_D, remaining_boundary)]
+remaining_BC = DirichletBC(V, u_D, remaining_boundary)
 
 coupling_expression = precice.create_coupling_expression()
 if problem is ProblemType.DIRICHLET:
     # modify Dirichlet boundary condition on coupling interface
-    bcs.append(DirichletBC(V, coupling_expression, coupling_boundary))
+    coupling_BC = DirichletBC(V, coupling_expression, coupling_boundary)
 if problem is ProblemType.NEUMANN:
     # TODO: something for later
     # modify Neumann boundary condition on coupling interface, modify weak
@@ -205,6 +205,15 @@ err.rename("err", "")
 error_write.append(err)
 
 
+'''
+# Probably not needed with pySDC, since we are using the controller
+
+# set t_1 = t_0 + dt, this gives u_D^1
+# call dt(0) to evaluate FEniCS Constant. Todo: is there a better way?
+u_D.t = t + dt(0)
+f.t = t + dt(0)
+'''
+
 ##################################################################
 # Setup pySDC controller
 ##################################################################
@@ -233,8 +242,8 @@ problem_params = dict()
 problem_params['mesh'] = domain_mesh
 problem_params['functionSpace'] = V
 problem_params['t0'] = 0.0
-problem_params['couplingBoundary'] = coupling_boundary
-problem_params['remainingBoundary'] = remaining_boundary
+problem_params['couplingBC'] = coupling_BC
+problem_params['remainingBC'] = remaining_BC
 
 # initialize controller parameters
 controller_params = dict()
@@ -254,3 +263,118 @@ controller = controller_nonMPI(num_procs=1, controller_params=controller_params,
 
 # Reference to problem class for easy access to exact solution
 P = controller.MS[0].levels[0].prob
+
+##################################################################
+
+
+if problem is ProblemType.DIRICHLET:
+    flux = Function(V_g)
+    flux.rename("Heat-Flux", "")
+    
+
+#################################################################
+# Coupling loop
+#################################################################
+
+while precice.is_coupling_ongoing():
+
+    # write checkpoint
+    if precice.requires_writing_checkpoint():
+        precice.store_checkpoint(u_n, t, n)
+
+        # output solution and reference solution at t_n+1 and substeps (read from buffer)
+        print('output u^%d and u_ref^%d' % (n, n))
+        for sample in u_write:
+            temperature_out << sample
+
+        for sample in ref_write:
+            ref_out << sample
+
+        for sample in error_write:
+            error_out << error_pointwise
+
+    precice_dt = precice.get_max_time_step_size()
+    dt.assign(np.min([pySDC_dt, precice_dt]))
+
+    '''
+    # Dirichlet BC and RHS need to point to end of current timestep
+    u_D.t = t + float(dt)
+    f.t = t + float(dt)
+    '''
+
+    # Coupling BC needs to point to end of current timestep
+    read_data = precice.read_data(dt)
+
+    # Update the coupling expression with the new read data
+    precice.update_coupling_expression(coupling_expression, read_data)
+
+    '''
+    # Compute solution u^n+1, use bcs u_D^n+1, u^n and coupling bcs
+    solve(a == L, u_np1, bcs)
+    '''
+    uend, stats = controller.run(u_n, t0=t, Tend=t + float(dt))
+    u_np1 = uend.values
+
+    # Write data to preCICE according to which problem is being solved
+    if problem is ProblemType.DIRICHLET:
+        # Dirichlet problem reads temperature and writes flux on boundary to Neumann problem
+        determine_gradient(V_g, u_np1, flux)
+        flux_x = interpolate(flux.sub(0), W)
+        precice.write_data(flux_x)
+    elif problem is ProblemType.NEUMANN:
+        # Neumann problem reads flux and writes temperature on boundary to Dirichlet problem
+        precice.write_data(u_np1)
+
+    precice.advance(dt)
+    precice_dt = precice.get_max_time_step_size()
+
+    # roll back to checkpoint
+    if precice.requires_reading_checkpoint():
+        u_cp, t_cp, n_cp = precice.retrieve_checkpoint()
+        u_n.assign(u_cp)
+        t = t_cp
+        n = n_cp
+        # empty buffer if window has not converged
+        u_write = []
+        ref_write = []
+        error_write = []
+    else:  # update solution
+        u_n.assign(u_np1)
+        t += float(dt)
+        n += 1
+        # copy data to buffer and rename
+        uu = u_n.copy()
+        uu.rename("u", "")
+        u_write.append((uu, t))
+        uu_ref = u_ref.copy()
+        uu_ref.rename("u_ref", "")
+        ref_write.append(uu_ref)
+        err = error_pointwise.copy()
+        err.rename("err", "")
+        error_write.append(err)
+
+    if precice.is_time_window_complete():
+        u_ref = interpolate(u_D, V)
+        u_ref.rename("reference", " ")
+        error, error_pointwise = compute_errors(u_n, u_ref, V, total_error_tol=error_tol)
+        print("n = %d, t = %.2f: L2 error on domain = %.3g" % (n, t, error))
+
+    '''
+    # Update Dirichlet BC
+    u_D.t = t + float(dt)
+    f.t = t + float(dt)
+    '''
+    
+# output solution and reference solution at t_n+1 and substeps (read from buffer)
+print("output u^%d and u_ref^%d" % (n, n))
+for sample in u_write:
+    temperature_out << sample
+
+for sample in ref_write:
+    ref_out << sample
+
+for sample in error_write:
+    error_out << error_pointwise
+
+# Hold plot
+precice.finalize()

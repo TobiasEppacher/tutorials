@@ -14,7 +14,7 @@ class fenics_heat_2d(ptype):
     def getDofCount(self):
         return len(Function(self.V).vector()[:])
     
-    def __init__(self, mesh, functionSpace, couplingBoundary, remainingBoundary, t0=0.0):
+    def __init__(self, mesh, functionSpace, couplingBC, remainingBC, t0=0.0):
         # Allow for fixing the boundary conditions for the residual computation
         # Necessary if imex-1st-order-mass is used
         self.fix_bc_for_residual = True
@@ -55,12 +55,12 @@ class fenics_heat_2d(ptype):
         self.u_D = Expression(sp.ccode(u_D_sp), degree=2, alpha=self.alpha, beta=self.beta, t=t0)
         self.f_N = Expression(sp.ccode(u_D_sp.diff(x_sp)), degree=1, alpha=alpha, t=t0)
         
-        # define the Dirichlet boundary
+        # define the homogeneous Dirichlet boundary
         def boundary(x, on_boundary):
             return on_boundary
         
-        self.remainingBC = df.DirichletBC(self.V, self.u_D, remainingBoundary)
-        self.couplingBC = df.DirichletBC(self.V, self.u_D, couplingBoundary)
+        self.remainingBC = remainingBC
+        self.couplingBC = couplingBC
         self.bc_hom = df.DirichletBC(self.V, df.Constant(0), boundary)
 
         # set forcing term as expression
@@ -127,9 +127,6 @@ class fenics_heat_2d(ptype):
         
         me = self.dtype_u(interpolate(self.u_D, self.V), val=self.V)
         return me
-    
-    def set_coupling_boundary(self, couplingBC):
-        self.couplingBC = couplingBC
     
     def get_f_N(self):
         return self.f_N
