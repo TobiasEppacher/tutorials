@@ -63,6 +63,7 @@ def determine_gradient(V_g, u, flux):
     solve(a == L, flux)
 
 
+
 parser = argparse.ArgumentParser(description="Solving heat equation for simple or complex interface case")
 parser.add_argument("participantName", help="Name of the solver.", type=str, choices=[p.value for p in ProblemType])
 parser.add_argument("-e", "--error-tol", help="set error tolerance", type=float, default=10**-8,)
@@ -70,7 +71,7 @@ parser.add_argument("-e", "--error-tol", help="set error tolerance", type=float,
 args = parser.parse_args()
 participant_name = args.participantName
 
-pySDC_dt = .01  # time step size
+pySDC_dt = 0.1  # time step size
 # Error is bounded by coupling accuracy. In theory we would obtain the analytical solution.
 error_tol = args.error_tol
 
@@ -83,9 +84,6 @@ if participant_name == ProblemType.DIRICHLET.value:
 elif participant_name == ProblemType.NEUMANN.value:
     problem = ProblemType.NEUMANN
     domain_part = DomainPart.RIGHT
-    print("Neumann part not yet implemented")
-    exit(1)
-    
 
 domain_mesh, coupling_boundary, remaining_boundary = get_geometry(domain_part)
 
@@ -96,9 +94,8 @@ W = V_g.sub(0).collapse()
 
 
 ##################################################################
-# preCICE coupling code
+# Problem definition and preCICE initialization
 ##################################################################
-
 
 # Define boundary conditions
 # create sympy expression of manufactured solution
@@ -106,6 +103,9 @@ x_sp, y_sp, t_sp = sp.symbols(['x[0]', 'x[1]', 't'])
 u_D_sp = 1 + x_sp * x_sp + alpha * y_sp * y_sp + beta * t_sp
 u_D = Expression(sp.ccode(u_D_sp), degree=2, alpha=alpha, beta=beta, t=0)
 u_D_function = interpolate(u_D, V)
+f_sp = u_D_sp.diff(t_sp) - u_D_sp.diff(x_sp).diff(x_sp) - u_D_sp.diff(y_sp).diff(y_sp)
+f = Expression(sp.ccode(f_sp), degree=2, alpha=alpha, beta=beta, t=0)
+
 
 if problem is ProblemType.DIRICHLET:
     # Define flux in x direction
@@ -132,18 +132,7 @@ dt = Constant(0)
 dt.assign(np.min([pySDC_dt, precice_dt]))
 
 
-# Should not need to be done with pySDC
-'''
-# Define variational problem
-u = TrialFunction(V)
-v = TestFunction(V)
-# du_dt-Laplace(u) = f
-f_sp = u_D_sp.diff(t_sp) - u_D_sp.diff(x_sp).diff(x_sp) - u_D_sp.diff(y_sp).diff(y_sp)
-f = Expression(sp.ccode(f_sp), degree=2, alpha=alpha, beta=beta, t=0)
-F = u * v / dt * dx + dot(grad(u), grad(v)) * dx - (u_n / dt + f) * v * dx
-'''
-
-
+# Define boundary conditions
 remaining_BC = DirichletBC(V, u_D, remaining_boundary)
 
 coupling_expression = precice.create_coupling_expression()
@@ -151,11 +140,7 @@ if problem is ProblemType.DIRICHLET:
     # modify Dirichlet boundary condition on coupling interface
     coupling_BC = DirichletBC(V, coupling_expression, coupling_boundary)
 if problem is ProblemType.NEUMANN:
-    # TODO: something for later
-    # modify Neumann boundary condition on coupling interface, modify weak
-    # form correspondingly
-    #F += v * coupling_expression * ds
-    print("Neumann part not yet implemented")
+    f -= coupling_expression
 
 # Time-stepping
 u_np1 = Function(V)
@@ -205,14 +190,10 @@ err.rename("err", "")
 error_write.append(err)
 
 
-'''
-# Probably not needed with pySDC, since we are using the controller
+if problem is ProblemType.DIRICHLET:
+    flux = Function(V_g)
+    flux.rename("Heat-Flux", "")
 
-# set t_1 = t_0 + dt, this gives u_D^1
-# call dt(0) to evaluate FEniCS Constant. Todo: is there a better way?
-u_D.t = t + dt(0)
-f.t = t + dt(0)
-'''
 
 ##################################################################
 # Setup pySDC controller
@@ -225,12 +206,12 @@ For more information on pySDC, see also "https://parallel-in-time.org/pySDC/"
 
 # initialize level parameters
 level_params = dict()
-level_params['restol'] = 1e-12
+level_params['restol'] = 1e-10
 level_params['dt'] = pySDC_dt
 
 # initialize step parameters
 step_params = dict()
-step_params['maxiter'] = 10
+step_params['maxiter'] = 5
 
 # initialize sweeper parameters
 sweeper_params = dict()
@@ -241,9 +222,12 @@ sweeper_params['num_nodes'] = 4
 problem_params = dict()
 problem_params['mesh'] = domain_mesh
 problem_params['functionSpace'] = V
-problem_params['t0'] = 0.0
 problem_params['couplingBC'] = coupling_BC
 problem_params['remainingBC'] = remaining_BC
+problem_params['solutionExpr'] = u_D
+problem_params['forcingTermExpr'] = f
+problem_params['preciceRef'] = precice
+problem_params['couplingExpr'] = coupling_expression
 
 # initialize controller parameters
 controller_params = dict()
@@ -266,10 +250,6 @@ P = controller.MS[0].levels[0].prob
 
 ##################################################################
 
-
-if problem is ProblemType.DIRICHLET:
-    flux = Function(V_g)
-    flux.rename("Heat-Flux", "")
     
 
 #################################################################
@@ -296,23 +276,26 @@ while precice.is_coupling_ongoing():
     precice_dt = precice.get_max_time_step_size()
     dt.assign(np.min([pySDC_dt, precice_dt]))
 
-    '''
     # Dirichlet BC and RHS need to point to end of current timestep
     u_D.t = t + float(dt)
     f.t = t + float(dt)
-    '''
 
+    # Coupling BC needs to be updated every SDC timestep -> done in problem class
+    # See file 'heatPySDC_problemClass.py' method 'solve_system(...)'
+    #
     # Coupling BC needs to point to end of current timestep
     read_data = precice.read_data(dt)
-
+    #
     # Update the coupling expression with the new read data
-    precice.update_coupling_expression(coupling_expression, read_data)
+    # precice.update_coupling_expression(coupling_expression, read_data)
+    P.set_t_start(t)
+    P.set_t_end(t + float(dt))
 
-    '''
-    # Compute solution u^n+1, use bcs u_D^n+1, u^n and coupling bcs
-    solve(a == L, u_np1, bcs)
-    '''
+    # Retrieve the result at the end of the timestep from pySDC
+    # Possible statistics generated by pySDC can be accessed via the 'stats' variable if needed
     uend, stats = controller.run(u_n, t0=t, Tend=t + float(dt))
+    
+    # Update the buffer with the new solution values
     u_np1 = uend.values
 
     # Write data to preCICE according to which problem is being solved
@@ -359,11 +342,11 @@ while precice.is_coupling_ongoing():
         error, error_pointwise = compute_errors(u_n, u_ref, V, total_error_tol=error_tol)
         print("n = %d, t = %.2f: L2 error on domain = %.3g" % (n, t, error))
 
-    '''
     # Update Dirichlet BC
     u_D.t = t + float(dt)
     f.t = t + float(dt)
-    '''
+    
+    
     
 # output solution and reference solution at t_n+1 and substeps (read from buffer)
 print("output u^%d and u_ref^%d" % (n, n))

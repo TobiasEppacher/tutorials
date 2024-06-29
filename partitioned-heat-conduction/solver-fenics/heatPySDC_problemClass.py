@@ -14,10 +14,17 @@ class fenics_heat_2d(ptype):
     def getDofCount(self):
         return len(Function(self.V).vector()[:])
     
-    def __init__(self, mesh, functionSpace, couplingBC, remainingBC, t0=0.0):
+    def __init__(self, mesh, functionSpace, couplingBC, remainingBC, forcingTermExpr, couplingExpr, preciceRef, solutionExpr=None):
         # Allow for fixing the boundary conditions for the residual computation
         # Necessary if imex-1st-order-mass is used
         self.fix_bc_for_residual = True
+        
+        # Set precice reference and coupling expression reference to update coupling boundary 
+        # at every step within pySDC
+        self.precice = preciceRef
+        self.coupling_expression = couplingExpr
+        self.t_start = 0.0
+        self.t_end = 1.0
         
         # set mesh
         self.mesh = mesh
@@ -28,7 +35,7 @@ class fenics_heat_2d(ptype):
         # invoke super init, passing number of dofs, dtype_u and dtype_f
         super(fenics_heat_2d, self).__init__(self.V)
         self._makeAttributeAndRegister(
-            'mesh', 'functionSpace', 't0', localVars=locals(), readOnly=True
+            'mesh', 'functionSpace', localVars=locals(), readOnly=True
         )
         
         
@@ -42,18 +49,10 @@ class fenics_heat_2d(ptype):
 
         self.M = df.assemble(a_M)
         self.K = df.assemble(a_K)
-
-        # Define function parameters and boundary condition
-        alpha = 3
-        self.alpha = 3
-        beta = 1.2
-        self.beta = 1.2
         
         # Create sympy expression of manufactured solution and its flux in x direction
-        x_sp, y_sp, t_sp = sp.symbols(['x[0]', 'x[1]', 't'])
-        u_D_sp = 1 + x_sp * x_sp + alpha * y_sp * y_sp + beta * t_sp
-        self.u_D = Expression(sp.ccode(u_D_sp), degree=2, alpha=self.alpha, beta=self.beta, t=t0)
-        self.f_N = Expression(sp.ccode(u_D_sp.diff(x_sp)), degree=1, alpha=alpha, t=t0)
+        self.u_D = solutionExpr
+        self.g = forcingTermExpr
         
         # define the homogeneous Dirichlet boundary
         def boundary(x, on_boundary):
@@ -62,9 +61,6 @@ class fenics_heat_2d(ptype):
         self.remainingBC = remainingBC
         self.couplingBC = couplingBC
         self.bc_hom = df.DirichletBC(self.V, df.Constant(0), boundary)
-
-        # set forcing term as expression
-        self.g = df.Expression('beta - 2 - 2 * alpha', degree=2, alpha=self.alpha, beta=self.beta, t=t0)
         
         
     def solve_system(self, rhs, factor, u0, t):
@@ -78,9 +74,19 @@ class fenics_heat_2d(ptype):
         self.u_D.t = t
 
         self.remainingBC.apply(T, b.values.vector())
-        self.couplingBC.apply(T, b.values.vector())
         self.remainingBC.apply(b.values.vector())
-        self.couplingBC.apply(b.values.vector())
+        
+        # Coupling BC is only needed here for Dirichlet participant
+        if self.couplingBC is not None:
+            # Coupling BC needs to point to correct time
+            dt = self.t_end - self.t_start
+            dt_factor = (t - self.t_start) / dt
+            
+            read_data = self.precice.read_data(dt_factor * dt)
+            self.precice.update_coupling_expression(self.coupling_expression, read_data)
+            
+            self.couplingBC.apply(T, b.values.vector())
+            self.couplingBC.apply(b.values.vector())
 
         df.solve(T, u.values.vector(), b.values.vector())
 
@@ -127,12 +133,12 @@ class fenics_heat_2d(ptype):
         
         me = self.dtype_u(interpolate(self.u_D, self.V), val=self.V)
         return me
-    
-    def get_f_N(self):
-        return self.f_N
-    
-    def get_u_D(self):
-        return self.u_D
+
+    def set_t_start(self, t_start):
+        self.t_start = t_start
+        
+    def set_t_end(self, t_end):
+        self.t_end = t_end
     
     
 '''
@@ -154,10 +160,20 @@ V = FunctionSpace(domain_mesh, 'P', 2)
 V_g = VectorFunctionSpace(domain_mesh, 'P', 1)
 W = V_g.sub(0).collapse()
 
+alpha = 3
+beta = 1.2
+x_sp, y_sp, t_sp = sp.symbols(['x[0]', 'x[1]', 't'])
+u_D_sp = 1 + x_sp * x_sp + alpha * y_sp * y_sp + beta * t_sp
+
+u_D = Expression(sp.ccode(u_D_sp), degree=2, alpha=alpha, beta=beta, t=0)
+f = Expression(sp.ccode(u_D_sp.diff(t_sp) - u_D_sp.diff(x_sp).diff(x_sp) - u_D_sp.diff(y_sp).diff(y_sp)), degree=2, alpha=alpha, beta=beta, t=0)
+
+remaining_BC = DirichletBC(V, u_D, remaining_boundary)
+coupling_BC = DirichletBC(V, u_D, coupling_boundary)
+
 # Set timestep size
 pySDC_dt = 0.1
 
-# Create the problem parameters
 # initialize level parameters
 level_params = dict()
 level_params['restol'] = 1e-12
@@ -177,8 +193,10 @@ problem_params = dict()
 problem_params['mesh'] = domain_mesh
 problem_params['functionSpace'] = V
 problem_params['t0'] = 0.0
-problem_params['couplingBoundary'] = coupling_boundary
-problem_params['remainingBoundary'] = remaining_boundary
+problem_params['couplingBC'] = coupling_BC
+problem_params['remainingBC'] = remaining_BC
+problem_params['solutionExpr'] = u_D
+problem_params['forcingTermExpr'] = f
 
 # initialize controller parameters
 controller_params = dict()
@@ -199,9 +217,12 @@ controller = controller_nonMPI(num_procs=1, controller_params=controller_params,
 # Reference to problem class for easy access to exact solution
 P = controller.MS[0].levels[0].prob
 
-u_init = P.u_exact(0.0)
-u_end, _ = controller.run(u_init, t0=0.0, Tend=1.0)
-u_ref = P.u_exact(1.0)
+t_start = 0.1
+t_end = 0.5
+
+u_init = P.u_exact(t_start)
+u_end, _ = controller.run(u_init, t0=t_start, Tend=t_end)
+u_ref = P.u_exact(t_end)
 
 # Compute the error
 err = abs(u_end - u_ref) / abs(u_ref)
@@ -209,8 +230,8 @@ err = abs(u_end - u_ref) / abs(u_ref)
 print(err)
 
 # Plot the solution
-plot(u_end.values)
-plt.show()
-'''
+#plot(u_end.values)
+#plt.show()
 
+'''
 
