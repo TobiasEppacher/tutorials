@@ -38,19 +38,36 @@ class fenics_heat_2d(ptype):
             'mesh', 'functionSpace', localVars=locals(), readOnly=True
         )
         
-        
-        # Stiffness term (Laplace)
+        # Define Trial and Test function
         u = df.TrialFunction(self.V)
         v = df.TestFunction(self.V)
-        a_K = -1.0 * df.inner(df.nabla_grad(u), df.nabla_grad(v)) * df.dx
-
+        
         # Mass term
         a_M = u * v * df.dx
-
         self.M = df.assemble(a_M)
-        self.K = df.assemble(a_K)
         
-        # Create sympy expression of manufactured solution and its flux in x direction
+        # Stiffness term (Laplace)
+        a_K = -1.0 * df.inner(df.nabla_grad(u), df.nabla_grad(v)) * df.dx
+        
+        if couplingBC is not None:
+            self.K = df.assemble(a_K)
+        else:
+            # TODO: Make this case for Neumann BCs work
+            class Left(SubDomain):
+                def inside(self, x, on_boundary):
+                    return on_boundary and near(x[0], 1.0)
+            
+            neumann_boundary_domain = df.MeshFunction('size_t', self.mesh, mesh.topology().dim() - 1)
+            neumann_boundary_domain.set_all(0)
+            Left().mark(neumann_boundary_domain, 1)
+            
+            ds = df.Measure('ds', domain=self.mesh, subdomain_data=neumann_boundary_domain)
+            a_K += v * couplingExpr * ds(1)
+            
+            # Assemble stiffness matrix with specification of the different subdomains of the integrals
+            self.K = df.assemble(a_K)
+            
+        
         self.u_D = solutionExpr
         self.g = forcingTermExpr
         
@@ -67,6 +84,15 @@ class fenics_heat_2d(ptype):
         r"""
         Dolfin's linear solver for :math:`(M - factor \cdot A) \vec{u} = \vec{rhs}`.
         """
+        
+        # Update coupling expression
+        dt = self.t_end - self.t_start
+        dt_factor = (t - self.t_start) / dt
+        
+        read_data = self.precice.read_data(dt_factor * dt)
+        self.precice.update_coupling_expression(self.coupling_expression, read_data)
+        
+        
         u = self.dtype_u(u0)
         T = self.M - factor * self.K
         b = self.dtype_u(rhs)
@@ -78,13 +104,6 @@ class fenics_heat_2d(ptype):
         
         # Coupling BC is only needed here for Dirichlet participant
         if self.couplingBC is not None:
-            # Coupling BC needs to point to correct time
-            dt = self.t_end - self.t_start
-            dt_factor = (t - self.t_start) / dt
-            
-            read_data = self.precice.read_data(dt_factor * dt)
-            self.precice.update_coupling_expression(self.coupling_expression, read_data)
-            
             self.couplingBC.apply(T, b.values.vector())
             self.couplingBC.apply(b.values.vector())
 
@@ -100,7 +119,16 @@ class fenics_heat_2d(ptype):
 
         self.K.mult(u.values.vector(), f.impl.values.vector())
 
+        if self.couplingBC is not None:
+            # Coupling BC needs to point to correct time
+            dt = self.t_end - self.t_start
+            dt_factor = (t - self.t_start) / dt
+            
+            read_data = self.precice.read_data(dt_factor * dt)
+            self.precice.update_coupling_expression(self.coupling_expression, read_data)
+
         self.g.t = t
+        
         f.expl = self.dtype_u(df.interpolate(self.g, self.V))
         f.expl = self.apply_mass_matrix(f.expl)
 

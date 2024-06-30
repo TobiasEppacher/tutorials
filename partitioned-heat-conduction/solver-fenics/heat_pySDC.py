@@ -71,7 +71,7 @@ parser.add_argument("-e", "--error-tol", help="set error tolerance", type=float,
 args = parser.parse_args()
 participant_name = args.participantName
 
-pySDC_dt = 0.1  # time step size
+pySDC_dt = 1.0  # time step size
 # Error is bounded by coupling accuracy. In theory we would obtain the analytical solution.
 error_tol = args.error_tol
 
@@ -104,7 +104,7 @@ u_D_sp = 1 + x_sp * x_sp + alpha * y_sp * y_sp + beta * t_sp
 u_D = Expression(sp.ccode(u_D_sp), degree=2, alpha=alpha, beta=beta, t=0)
 u_D_function = interpolate(u_D, V)
 f_sp = u_D_sp.diff(t_sp) - u_D_sp.diff(x_sp).diff(x_sp) - u_D_sp.diff(y_sp).diff(y_sp)
-f = Expression(sp.ccode(f_sp), degree=2, alpha=alpha, beta=beta, t=0)
+forcing_expr = Expression(sp.ccode(f_sp), degree=2, alpha=alpha, beta=beta, t=0)
 
 
 if problem is ProblemType.DIRICHLET:
@@ -140,7 +140,7 @@ if problem is ProblemType.DIRICHLET:
     # modify Dirichlet boundary condition on coupling interface
     coupling_BC = DirichletBC(V, coupling_expression, coupling_boundary)
 if problem is ProblemType.NEUMANN:
-    f -= coupling_expression
+    coupling_BC = None
 
 # Time-stepping
 u_np1 = Function(V)
@@ -225,7 +225,7 @@ problem_params['functionSpace'] = V
 problem_params['couplingBC'] = coupling_BC
 problem_params['remainingBC'] = remaining_BC
 problem_params['solutionExpr'] = u_D
-problem_params['forcingTermExpr'] = f
+problem_params['forcingTermExpr'] = forcing_expr
 problem_params['preciceRef'] = precice
 problem_params['couplingExpr'] = coupling_expression
 
@@ -278,7 +278,7 @@ while precice.is_coupling_ongoing():
 
     # Dirichlet BC and RHS need to point to end of current timestep
     u_D.t = t + float(dt)
-    f.t = t + float(dt)
+    forcing_expr.t = t + float(dt)
 
     # Coupling BC needs to be updated every SDC timestep -> done in problem class
     # See file 'heatPySDC_problemClass.py' method 'solve_system(...)'
@@ -344,8 +344,7 @@ while precice.is_coupling_ongoing():
 
     # Update Dirichlet BC
     u_D.t = t + float(dt)
-    f.t = t + float(dt)
-    
+    forcing_expr.t = t + float(dt)
     
     
 # output solution and reference solution at t_n+1 and substeps (read from buffer)
