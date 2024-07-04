@@ -99,10 +99,11 @@ class fenics_heat_2d(ptype):
 
         self.u_D.t = t
 
+        # Time of the boundary condition is set in the precice loop
         self.remainingBC.apply(T, b.values.vector())
         self.remainingBC.apply(b.values.vector())
         
-        # Coupling BC is only needed here for Dirichlet participant
+        # Coupling BC is only needed here for Dirichlet participant, Neumann BC is handled different
         if self.couplingBC is not None:
             self.couplingBC.apply(T, b.values.vector())
             self.couplingBC.apply(b.values.vector())

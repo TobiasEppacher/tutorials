@@ -45,7 +45,7 @@ import utils.utils as utl
 
 from pySDC.implementations.sweeper_classes.imex_1st_order_mass import imex_1st_order_mass
 from pySDC.implementations.controller_classes.controller_nonMPI import controller_nonMPI
-from heatPySDC_problemClass import fenics_heat_2d
+from heat_pySDC_problemClass import fenics_heat_2d
 
 def determine_gradient(V_g, u, flux):
     """
