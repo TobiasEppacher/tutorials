@@ -30,10 +30,17 @@ class StraightBoundary(SubDomain):
             return True
         else:
             return False
+        
+class FullBoundary(SubDomain):
+    def inside(self, x, on_boundary):
+        return on_boundary
 
 
 def get_geometry(domain_part):
     nx = ny = 11
+    
+    coupling_boundary = StraightBoundary()
+    remaining_boundary = ExcludeStraightBoundary()
 
     if domain_part is DomainPart.LEFT:
         p0 = Point(x_left, y_bottom)
@@ -41,11 +48,15 @@ def get_geometry(domain_part):
     elif domain_part is DomainPart.RIGHT:
         p0 = Point(x_coupling, y_bottom)
         p1 = Point(x_right, y_top)
+    elif domain_part is DomainPart.FULL:
+        p0 = Point(x_left, y_bottom)
+        p1 = Point(x_right, y_top)
+        nx *= 2
+        coupling_boundary = None
+        remaining_boundary = FullBoundary()
     else:
         raise Exception("invalid domain_part: {}".format(domain_part))
 
     mesh = RectangleMesh(p0, p1, nx, ny, diagonal="left")
-    coupling_boundary = StraightBoundary()
-    remaining_boundary = ExcludeStraightBoundary()
 
     return mesh, coupling_boundary, remaining_boundary

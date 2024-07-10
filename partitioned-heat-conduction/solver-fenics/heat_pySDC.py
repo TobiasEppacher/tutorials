@@ -32,7 +32,7 @@ The implementation of the higher-order implicit Runge-Kutta methods is based on:
 
 from __future__ import print_function, division
 from fenics import Function, FunctionSpace, Expression, Constant, DirichletBC, TrialFunction, TestFunction, \
-    File, solve, lhs, rhs, grad, inner, dot, dx, ds, interpolate, VectorFunctionSpace, MeshFunction, MPI, MixedElement, split, project
+    File, solve, grad, inner, dx, interpolate, VectorFunctionSpace, MeshFunction, MPI
 from fenicsprecice import Adapter
 from errorcomputation import compute_errors
 from my_enums import ProblemType, DomainPart
@@ -40,8 +40,6 @@ import argparse
 import numpy as np
 from problem_setup import get_geometry
 import sympy as sp
-from utils.ButcherTableaux import *
-import utils.utils as utl
 
 from pySDC.implementations.sweeper_classes.imex_1st_order_mass import imex_1st_order_mass
 from pySDC.implementations.controller_classes.controller_nonMPI import controller_nonMPI
