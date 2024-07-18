@@ -65,7 +65,7 @@ error_tol = args.error_tol
 
 alpha = 3  # parameter alpha
 beta = 1.2  # parameter beta
-temporal_deg = 2  # temporal degree of the manufactured solution
+temporal_deg = 1  # temporal degree of the manufactured solution
 
 if participant_name == ProblemType.DIRICHLET.value:
     problem = ProblemType.DIRICHLET

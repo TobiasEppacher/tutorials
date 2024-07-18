@@ -71,7 +71,7 @@ participant_name = args.participantName
 
 # Time step size
 # Can be anything smaller then the preCICE time window size
-pySDC_dt = 0.125
+pySDC_dt = 1.0
 
 # preCICE error tolerance
 # Error is bounded by coupling accuracy. In theory we would obtain the analytical solution.
@@ -79,7 +79,7 @@ error_tol = args.error_tol
 
 alpha = 3  # parameter alpha
 beta = 1.2  # parameter beta
-temporal_deg = 2  # temporal degree of the manufactured solution
+temporal_deg = 1  # temporal degree of the manufactured solution
 
 if participant_name == ProblemType.DIRICHLET.value:
     problem = ProblemType.DIRICHLET
