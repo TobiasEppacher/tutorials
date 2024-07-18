@@ -14,15 +14,15 @@ class fenics_heat_2d(ptype):
     def getDofCount(self):
         return len(Function(self.V).vector()[:])
     
-    def __init__(self, mesh, functionSpace, forcingTermExpr, couplingBC, remainingBC, couplingExpr, preciceRef, solutionExpr):
+    def __init__(self, mesh, function_space, forcing_term_expr, solution_expr, coupling_boundary, remaining_boundary, coupling_expr, precice_ref):
         # Allow for fixing the boundary conditions for the residual computation
-        # Necessary if imex-1st-order-mass is used
+        # Necessary if imex-1st-order-mass sweeper is used
         self.fix_bc_for_residual = True
         
         # Set precice reference and coupling expression reference to update coupling boundary 
         # at every step within pySDC
-        self.precice = preciceRef
-        self.coupling_expression = couplingExpr
+        self.precice = precice_ref
+        self.coupling_expression = coupling_expr
         self.t_start = 0.0
         self.t_end = 1.0
         
@@ -30,13 +30,13 @@ class fenics_heat_2d(ptype):
         self.mesh = mesh
         
         # define function space for future reference
-        self.V = functionSpace
+        self.V = function_space
         
         # invoke super init
         super(fenics_heat_2d, self).__init__(self.V)
-        self._makeAttributeAndRegister(
-            'mesh', 'functionSpace', localVars=locals(), readOnly=True
-        )
+        
+        # Not sure if needed
+        self._makeAttributeAndRegister('mesh', 'function_space', localVars=locals(), readOnly=True)
         
         # Define Trial and Test function
         u = df.TrialFunction(self.V)
@@ -51,20 +51,24 @@ class fenics_heat_2d(ptype):
         self.K = df.assemble(a_K)         
         
         # Forcing term
-        self.forcing_term_expr = forcingTermExpr
+        self.forcing_term_expr = forcing_term_expr
         
         # Solution expression for error comparison and as boundary condition 
         # on the non-coupling boundary
-        self.solution_expression = solutionExpr
+        self.solution_expr = solution_expr
+         
+        # Currently only for Dirichlet boundary, has to be changed for Neumann boundary
+        if coupling_expr == None:
+            self.couplingBC = None
+        else:
+            self.couplingBC = df.DirichletBC(self.V, coupling_expr, coupling_boundary)
+            
+        self.remainingBC = df.DirichletBC(self.V, solution_expr, remaining_boundary)
         
-        # define the homogeneous Dirichlet boundary
-        def boundary(x, on_boundary):
+        # define the homogeneous Dirichlet boundary for residual correction
+        def FullBoundary(x, on_boundary):
             return on_boundary
-        
-        self.remainingBC = remainingBC
-        self.couplingBC = couplingBC
-        
-        self.homogenousBC = df.DirichletBC(self.V, df.Constant(0), boundary)
+        self.homogenousBC = df.DirichletBC(self.V, df.Constant(0), FullBoundary)
         
         
     def solve_system(self, rhs, factor, u0, t):
@@ -75,13 +79,12 @@ class fenics_heat_2d(ptype):
         T = self.M - factor * self.K
         b = self.dtype_u(rhs)
 
-        self.solution_expression.t = t
+        self.solution_expr.t = t
 
         # Time of the boundary condition is set in the precice loop
         self.remainingBC.apply(T, b.values.vector())
-        
-        # Coupling BC is only needed here for Dirichlet participant, Neumann BC is handled different
-        if self.couplingBC != None:         
+         
+        if self.couplingBC != None:     
             # Coupling BC needs to point to correct time
             dt = self.t_end - self.t_start
             dt_factor = (t - self.t_start) / dt
@@ -133,9 +136,9 @@ class fenics_heat_2d(ptype):
         return me
 
     def u_exact(self, t):
-        self.solution_expression.t = t
+        self.solution_expr.t = t
         
-        me = self.dtype_u(interpolate(self.solution_expression, self.V), val=self.V)
+        me = self.dtype_u(interpolate(self.solution_expr, self.V), val=self.V)
         return me
 
     def set_t_start(self, t_start):

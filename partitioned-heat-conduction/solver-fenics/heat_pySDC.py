@@ -69,7 +69,11 @@ parser.add_argument("-e", "--error-tol", help="set error tolerance", type=float,
 args = parser.parse_args()
 participant_name = args.participantName
 
-pySDC_dt = 0.0625  # time step size
+# Time step size
+# Can be anything smaller then the preCICE time window size
+pySDC_dt = 1.0  
+
+# preCICE error tolerance
 # Error is bounded by coupling accuracy. In theory we would obtain the analytical solution.
 error_tol = args.error_tol
 
@@ -131,16 +135,8 @@ precice_dt = precice.get_max_time_step_size()
 dt = Constant(0)
 dt.assign(np.min([pySDC_dt, precice_dt]))
 
-
-# Define boundary conditions
-remaining_BC = DirichletBC(V, u_D, remaining_boundary)
-
 coupling_expression = precice.create_coupling_expression()
-if problem is ProblemType.DIRICHLET:
-    # modify Dirichlet boundary condition on coupling interface
-    coupling_BC = DirichletBC(V, coupling_expression, coupling_boundary)
-if problem is ProblemType.NEUMANN:
-    coupling_BC = None
+
 
 # Time-stepping
 u_np1 = Function(V)
@@ -221,13 +217,13 @@ sweeper_params['num_nodes'] = 4
 # initialize problem parameters
 problem_params = dict()
 problem_params['mesh'] = domain_mesh
-problem_params['functionSpace'] = V
-problem_params['couplingBC'] = coupling_BC
-problem_params['remainingBC'] = remaining_BC
-problem_params['solutionExpr'] = u_D
-problem_params['forcingTermExpr'] = forcing_expr
-problem_params['preciceRef'] = precice
-problem_params['couplingExpr'] = coupling_expression
+problem_params['function_space'] = V
+problem_params['coupling_boundary'] = coupling_boundary
+problem_params['remaining_boundary'] = remaining_boundary
+problem_params['solution_expr'] = u_D
+problem_params['forcing_term_expr'] = forcing_expr
+problem_params['precice_ref'] = precice
+problem_params['coupling_expr'] = coupling_expression
 
 # initialize controller parameters
 controller_params = dict()
