@@ -86,10 +86,9 @@ class fenics_heat_2d(ptype):
          
         if self.couplingBC != None:     
             # Coupling BC needs to point to correct time
-            dt = self.t_end - self.t_start
-            dt_factor = (t - self.t_start) / dt
+            dt = t - self.t_start
             
-            read_data = self.precice.read_data(dt_factor * dt)
+            read_data = self.precice.read_data(dt)
             self.precice.update_coupling_expression(self.coupling_expression, read_data)   
             
             self.couplingBC.apply(T, b.values.vector())

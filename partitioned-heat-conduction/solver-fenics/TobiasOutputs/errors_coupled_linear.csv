@@ -1,0 +1,4 @@
+time-window_size,L2-error Dirichlet (pySDC),L2-error Neumann (fenics)
+1.0,6.08-14,5.7e-14
+0.5,7.45e-14,6.06e-14
+0.25,7.28e-14,9.37e-14

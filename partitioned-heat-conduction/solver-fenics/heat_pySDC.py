@@ -71,7 +71,7 @@ participant_name = args.participantName
 
 # Time step size
 # Can be anything smaller then the preCICE time window size
-pySDC_dt = 1.0  
+pySDC_dt = 0.125
 
 # preCICE error tolerance
 # Error is bounded by coupling accuracy. In theory we would obtain the analytical solution.
@@ -104,7 +104,7 @@ W = V_g.sub(0).collapse()
 # Define boundary conditions
 # create sympy expression of manufactured solution
 x_sp, y_sp, t_sp = sp.symbols(['x[0]', 'x[1]', 't'])
-u_D_sp = 1 + x_sp * x_sp + alpha * y_sp * y_sp + beta * t_sp
+u_D_sp = 1 + x_sp * x_sp + alpha * y_sp * y_sp + beta * (t_sp ** temporal_deg)
 u_D = Expression(sp.ccode(u_D_sp), degree=2, alpha=alpha, beta=beta, t=0)
 u_D_function = interpolate(u_D, V)
 f_sp = u_D_sp.diff(t_sp) - u_D_sp.diff(x_sp).diff(x_sp) - u_D_sp.diff(y_sp).diff(y_sp)
@@ -207,7 +207,7 @@ level_params['dt'] = pySDC_dt
 
 # initialize step parameters
 step_params = dict()
-step_params['maxiter'] = 1
+step_params['maxiter'] = 5
 
 # initialize sweeper parameters
 sweeper_params = dict()
@@ -272,11 +272,7 @@ while precice.is_coupling_ongoing():
     precice_dt = precice.get_max_time_step_size()
     dt.assign(np.min([pySDC_dt, precice_dt]))
 
-    # Dirichlet BC and RHS need to point to end of current timestep
-    u_D.t = t + float(dt)
-    forcing_expr.t = t + float(dt)
-
-    # Update start and end time of the current preCICE time window within
+    # Update start and end time of the current preCICE time step within
     # the problem class.
     # This is necessary, that the coupling expression update, done in the problem class
     # itself is executed correctly.
@@ -333,10 +329,6 @@ while precice.is_coupling_ongoing():
         u_ref.rename("reference", " ")
         error, error_pointwise = compute_errors(u_n, u_ref, V, total_error_tol=error_tol)
         print("n = %d, t = %.2f: L2 error on domain = %.3g" % (n, t, error))
-
-    # Update Dirichlet BC
-    u_D.t = t + float(dt)
-    forcing_expr.t = t + float(dt)
     
     
 # output solution and reference solution at t_n+1 and substeps (read from buffer)

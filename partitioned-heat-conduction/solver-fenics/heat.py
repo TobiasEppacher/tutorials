@@ -65,6 +65,7 @@ error_tol = args.error_tol
 
 alpha = 3  # parameter alpha
 beta = 1.2  # parameter beta
+temporal_deg = 2  # temporal degree of the manufactured solution
 
 if participant_name == ProblemType.DIRICHLET.value:
     problem = ProblemType.DIRICHLET
@@ -83,7 +84,7 @@ W = V_g.sub(0).collapse()
 # Define boundary conditions
 # create sympy expression of manufactured solution
 x_sp, y_sp, t_sp = sp.symbols(['x[0]', 'x[1]', 't'])
-u_D_sp = 1 + x_sp * x_sp + alpha * y_sp * y_sp + beta * t_sp
+u_D_sp = 1 + x_sp * x_sp + alpha * y_sp * y_sp + beta * (t_sp ** temporal_deg)
 u_D = Expression(sp.ccode(u_D_sp), degree=2, alpha=alpha, beta=beta, t=0)
 u_D_function = interpolate(u_D, V)
 
@@ -230,6 +231,7 @@ while precice.is_coupling_ongoing():
         precice.write_data(flux_x)
     elif problem is ProblemType.NEUMANN:
         # Neumann problem reads flux and writes temperature on boundary to Dirichlet problem
+        #u_np1 = interpolate(u_D, V) # turn this on to test only the pySDC part
         precice.write_data(u_np1)
 
     precice.advance(dt)
