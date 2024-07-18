@@ -69,12 +69,13 @@ parser.add_argument("-e", "--error-tol", help="set error tolerance", type=float,
 args = parser.parse_args()
 participant_name = args.participantName
 
-pySDC_dt = 1.0  # time step size
+pySDC_dt = 0.0625  # time step size
 # Error is bounded by coupling accuracy. In theory we would obtain the analytical solution.
 error_tol = args.error_tol
 
 alpha = 3  # parameter alpha
 beta = 1.2  # parameter beta
+temporal_deg = 2  # temporal degree of the manufactured solution
 
 if participant_name == ProblemType.DIRICHLET.value:
     problem = ProblemType.DIRICHLET
@@ -82,6 +83,7 @@ if participant_name == ProblemType.DIRICHLET.value:
 elif participant_name == ProblemType.NEUMANN.value:
     problem = ProblemType.NEUMANN
     domain_part = DomainPart.RIGHT
+    exit("Neumann problem not supported with pySDC")
 
 domain_mesh, coupling_boundary, remaining_boundary = get_geometry(domain_part)
 
@@ -209,11 +211,11 @@ level_params['dt'] = pySDC_dt
 
 # initialize step parameters
 step_params = dict()
-step_params['maxiter'] = 5
+step_params['maxiter'] = 1
 
 # initialize sweeper parameters
 sweeper_params = dict()
-sweeper_params['quad_type'] = 'RADAU-RIGHT'
+sweeper_params['quad_type'] = 'LOBATTO'
 sweeper_params['num_nodes'] = 4
 
 # initialize problem parameters
@@ -278,14 +280,10 @@ while precice.is_coupling_ongoing():
     u_D.t = t + float(dt)
     forcing_expr.t = t + float(dt)
 
-    # Coupling BC needs to be updated every SDC timestep -> done in problem class
-    # See file 'heatPySDC_problemClass.py' method 'solve_system(...)'
-    #
-    # Coupling BC needs to point to end of current timestep
-    read_data = precice.read_data(dt)
-    #
-    # Update the coupling expression with the new read data
-    # precice.update_coupling_expression(coupling_expression, read_data)
+    # Update start and end time of the current preCICE time window within
+    # the problem class.
+    # This is necessary, that the coupling expression update, done in the problem class
+    # itself is executed correctly.
     P.set_t_start(t)
     P.set_t_end(t + float(dt))
 

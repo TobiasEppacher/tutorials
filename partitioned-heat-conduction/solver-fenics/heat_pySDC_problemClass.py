@@ -32,7 +32,7 @@ class fenics_heat_2d(ptype):
         # define function space for future reference
         self.V = functionSpace
         
-        # invoke super init, passing number of dofs, dtype_u and dtype_f
+        # invoke super init
         super(fenics_heat_2d, self).__init__(self.V)
         self._makeAttributeAndRegister(
             'mesh', 'functionSpace', localVars=locals(), readOnly=True
@@ -50,8 +50,12 @@ class fenics_heat_2d(ptype):
         a_K = -1.0 * df.inner(df.nabla_grad(u), df.nabla_grad(v)) * df.dx
         self.K = df.assemble(a_K)         
         
-        self.u_D = solutionExpr
-        self.g = forcingTermExpr
+        # Forcing term
+        self.forcing_term_expr = forcingTermExpr
+        
+        # Solution expression for error comparison and as boundary condition 
+        # on the non-coupling boundary
+        self.solution_expression = solutionExpr
         
         # define the homogeneous Dirichlet boundary
         def boundary(x, on_boundary):
@@ -59,7 +63,8 @@ class fenics_heat_2d(ptype):
         
         self.remainingBC = remainingBC
         self.couplingBC = couplingBC
-        self.bc_hom = df.DirichletBC(self.V, df.Constant(0), boundary)
+        
+        self.homogenousBC = df.DirichletBC(self.V, df.Constant(0), boundary)
         
         
     def solve_system(self, rhs, factor, u0, t):
@@ -70,14 +75,13 @@ class fenics_heat_2d(ptype):
         T = self.M - factor * self.K
         b = self.dtype_u(rhs)
 
-        self.u_D.t = t
+        self.solution_expression.t = t
 
         # Time of the boundary condition is set in the precice loop
         self.remainingBC.apply(T, b.values.vector())
-        self.remainingBC.apply(b.values.vector())
         
         # Coupling BC is only needed here for Dirichlet participant, Neumann BC is handled different
-        if self.couplingBC is not None:         
+        if self.couplingBC != None:         
             # Coupling BC needs to point to correct time
             dt = self.t_end - self.t_start
             dt_factor = (t - self.t_start) / dt
@@ -86,7 +90,6 @@ class fenics_heat_2d(ptype):
             self.precice.update_coupling_expression(self.coupling_expression, read_data)   
             
             self.couplingBC.apply(T, b.values.vector())
-            self.couplingBC.apply(b.values.vector())
 
         df.solve(T, u.values.vector(), b.values.vector())
 
@@ -100,9 +103,9 @@ class fenics_heat_2d(ptype):
 
         self.K.mult(u.values.vector(), f.impl.values.vector())
         
-        self.g.t = t
+        self.forcing_term_expr.t = t
         
-        f.expl = self.dtype_u(df.interpolate(self.g, self.V))
+        f.expl = self.dtype_u(df.interpolate(self.forcing_term_expr, self.V))
         f.expl = self.apply_mass_matrix(f.expl)
 
         return f
@@ -116,7 +119,7 @@ class fenics_heat_2d(ptype):
         res : dtype_u
               Residual
         """
-        self.bc_hom.apply(res.values.vector())
+        self.homogenousBC.apply(res.values.vector())
         return None
     
     def apply_mass_matrix(self, u):
@@ -130,9 +133,9 @@ class fenics_heat_2d(ptype):
         return me
 
     def u_exact(self, t):
-        self.u_D.t = t
+        self.solution_expression.t = t
         
-        me = self.dtype_u(interpolate(self.u_D, self.V), val=self.V)
+        me = self.dtype_u(interpolate(self.solution_expression, self.V), val=self.V)
         return me
 
     def set_t_start(self, t_start):
