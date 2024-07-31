@@ -49,7 +49,7 @@
   <coupling-scheme:serial-implicit>
     <participants first="Dirichlet" second="Neumann" />
     <max-time value="1.0" />
-    <time-window-size value="0.00390625" />
+    <time-window-size value="1.0" />
     <max-iterations value="100" />
     <exchange
       data="Heat-Flux"

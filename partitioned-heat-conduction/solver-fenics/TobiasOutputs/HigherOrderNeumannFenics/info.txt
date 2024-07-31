@@ -1,0 +1,12 @@
+This folder contains simulation data with different temporal degrees (linear, quadratic, cubic)
+as well as different waveform degrees (coupling)
+
+The simulations were conducted with the following manufactured solution:
+
+1 + x^2 + alpha * y^2 + beta * t^temporal_deg
+
+Other information about simulation:
+
+- pySDC dt always corresponded to the preCICE time-window-size (if not specified otherwise)
+- Waveform degree 1 used Quasi-Newton acceleration, higher degrees don't as it is not allowed by preCICE
+- As Neumann participant, Niklas Vinnitchenko's implementation in 'heatHigherOrder.py' with GaussLegendre(2) (order 4 time integrator) was used.
