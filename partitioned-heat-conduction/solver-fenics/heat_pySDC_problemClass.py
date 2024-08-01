@@ -14,7 +14,7 @@ class fenics_heat_2d(ptype):
     def getDofCount(self):
         return len(Function(self.V).vector()[:])
     
-    def __init__(self, mesh, function_space, forcing_term_expr, solution_expr, coupling_boundary, remaining_boundary, coupling_expr, precice_ref):
+    def __init__(self, mesh, function_space, forcing_term_expr, solution_expr, coupling_boundary, remaining_boundary, coupling_expr, precice_ref, participant_name):
         # Allow for fixing the boundary conditions for the residual computation
         # Necessary if imex-1st-order-mass sweeper is used
         self.fix_bc_for_residual = True
@@ -24,12 +24,10 @@ class fenics_heat_2d(ptype):
         self.precice = precice_ref
         self.coupling_expression = coupling_expr
         self.t_start = 0.0
-        self.t_end = 1.0
+        self.participant_name = participant_name
         
-        # set mesh
+        # set mesh and function space for future reference
         self.mesh = mesh
-        
-        # define function space for future reference
         self.V = function_space
         
         # invoke super init
@@ -58,9 +56,7 @@ class fenics_heat_2d(ptype):
         self.solution_expr = solution_expr
          
         # Currently only for Dirichlet boundary, has to be changed for Neumann boundary
-        if coupling_expr == None:
-            self.couplingBC = None
-        else:
+        if self.participant_name == 'Dirichlet':
             self.couplingBC = df.DirichletBC(self.V, coupling_expr, coupling_boundary)
             
         self.remainingBC = df.DirichletBC(self.V, solution_expr, remaining_boundary)
@@ -80,14 +76,11 @@ class fenics_heat_2d(ptype):
         b = self.dtype_u(rhs)
 
         self.solution_expr.t = t
-
-        # Time of the boundary condition is set in the precice loop
         self.remainingBC.apply(T, b.values.vector())
          
-        if self.couplingBC != None:     
+        if self.participant_name == 'Dirichlet':     
             # Coupling BC needs to point to correct time
             dt = t - self.t_start
-            
             read_data = self.precice.read_data(dt)
             self.precice.update_coupling_expression(self.coupling_expression, read_data)   
             
@@ -99,14 +92,17 @@ class fenics_heat_2d(ptype):
 
     def eval_f(self, u, t):
         """
-            The right-hand side.
+            Derivative computation.
+            Returns a dtype_f object (rhs_fenics_mesh in our case),
+            with an explicit and implicit part.
         """
         f = self.dtype_f(self.V)
 
+        # Implicit part: K*u
         self.K.mult(u.values.vector(), f.impl.values.vector())
         
+        # Explicit part: M*g   (g = forcing term)
         self.forcing_term_expr.t = t
-        
         f.expl = self.dtype_u(df.interpolate(self.forcing_term_expr, self.V))
         f.expl = self.apply_mass_matrix(f.expl)
 
@@ -142,7 +138,4 @@ class fenics_heat_2d(ptype):
 
     def set_t_start(self, t_start):
         self.t_start = t_start
-        
-    def set_t_end(self, t_end):
-        self.t_end = t_end
 

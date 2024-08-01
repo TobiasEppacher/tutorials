@@ -224,6 +224,7 @@ problem_params['solution_expr'] = u_D
 problem_params['forcing_term_expr'] = forcing_expr
 problem_params['precice_ref'] = precice
 problem_params['coupling_expr'] = coupling_expression
+problem_params['participant_name'] = participant_name
 
 # initialize controller parameters
 controller_params = dict()
