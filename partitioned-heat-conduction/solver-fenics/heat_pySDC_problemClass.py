@@ -14,7 +14,7 @@ class fenics_heat_2d(ptype):
     def getDofCount(self):
         return len(Function(self.V).vector()[:])
     
-    def __init__(self, mesh, function_space, forcing_term_expr, solution_expr, coupling_boundary, remaining_boundary, coupling_expr, precice_ref):
+    def __init__(self, mesh, function_space, forcing_term_expr, solution_expr, coupling_boundary, remaining_boundary, coupling_expr, precice_ref, participant_type='Dirichlet'):
         # Allow for fixing the boundary conditions for the residual computation
         # Necessary if imex-1st-order-mass sweeper is used
         self.fix_bc_for_residual = True
@@ -24,12 +24,10 @@ class fenics_heat_2d(ptype):
         self.precice = precice_ref
         self.coupling_expression = coupling_expr
         self.t_start = 0.0
-        self.t_end = 1.0
+        self.participant_type = participant_type
         
-        # set mesh
+        # safe mesh and function space for future reference
         self.mesh = mesh
-        
-        # define function space for future reference
         self.V = function_space
         
         # invoke super init
@@ -58,10 +56,13 @@ class fenics_heat_2d(ptype):
         self.solution_expr = solution_expr
          
         # Currently only for Dirichlet boundary, has to be changed for Neumann boundary
-        if coupling_expr == None:
-            self.couplingBC = None
-        else:
+        if self.participant_type == 'Dirichlet':
             self.couplingBC = df.DirichletBC(self.V, coupling_expr, coupling_boundary)
+        elif self.participant_type == 'Neumann':
+            self.boundary_markers = df.MeshFunction('size_t', self.mesh, self.mesh.topology().dim()-1, 0)
+            coupling_boundary.mark(self.boundary_markers, 0)
+            self.ds = df.Measure('ds', domain=self.mesh, subdomain_data=self.boundary_markers)
+            
             
         self.remainingBC = df.DirichletBC(self.V, solution_expr, remaining_boundary)
         
@@ -80,16 +81,14 @@ class fenics_heat_2d(ptype):
         b = self.dtype_u(rhs)
 
         self.solution_expr.t = t
-
-        # Time of the boundary condition is set in the precice loop
         self.remainingBC.apply(T, b.values.vector())
          
-        if self.couplingBC != None:     
+        if self.participant_type == 'Dirichlet':     
             # Coupling BC needs to point to correct time
             dt = t - self.t_start
             
             read_data = self.precice.read_data(dt)
-            self.precice.update_coupling_expression(self.coupling_expression, read_data)   
+            self.precice.update_coupling_expression(self.coupling_expression, read_data)
             
             self.couplingBC.apply(T, b.values.vector())
 
@@ -103,11 +102,26 @@ class fenics_heat_2d(ptype):
         """
         f = self.dtype_f(self.V)
 
+        # Implicit part: K*u
         self.K.mult(u.values.vector(), f.impl.values.vector())
         
+        # Explicit part: M*g (where g is the forcing term interpolated on the FEM mesh)
         self.forcing_term_expr.t = t
         
-        f.expl = self.dtype_u(df.interpolate(self.forcing_term_expr, self.V))
+        
+        # TESTING OF NEUMANN BOUNDARY CONDITION HERE IS THE PROBLEM
+        if self.participant_type == 'Neumann':
+            dt = t - self.t_start
+            read_data = self.precice.read_data(dt)
+            self.precice.update_coupling_expression(self.coupling_expression, read_data)
+            
+            v  = df.TestFunction(self.V)
+            L = self.forcing_term_expr * v * dx + self.coupling_expression * v * self.ds
+            out = df.assemble(L)
+            f.expl = self.dtype_u(self.V)
+            f.expl.values.vector()[:] = out.get_local()
+        else:
+            f.expl = self.dtype_u(df.interpolate(self.forcing_term_expr, self.V))
         f.expl = self.apply_mass_matrix(f.expl)
 
         return f
@@ -142,7 +156,4 @@ class fenics_heat_2d(ptype):
 
     def set_t_start(self, t_start):
         self.t_start = t_start
-        
-    def set_t_end(self, t_end):
-        self.t_end = t_end
 
