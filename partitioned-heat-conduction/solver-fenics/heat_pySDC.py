@@ -71,7 +71,7 @@ participant_name = args.participantName
 
 # Time step size
 # Can be anything smaller then the preCICE time window size
-pySDC_dt = 0.0078125
+pySDC_dt = 0.25/1
 
 # preCICE error tolerance
 # Error is bounded by coupling accuracy. In theory we would obtain the analytical solution.

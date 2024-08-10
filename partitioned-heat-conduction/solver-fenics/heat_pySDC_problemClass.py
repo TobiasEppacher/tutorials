@@ -4,21 +4,12 @@ import dolfin as df
 from pySDC.core.Problem import ptype
 from pySDC.implementations.datatype_classes.fenics_mesh import fenics_mesh, rhs_fenics_mesh
 
-import sympy as sp
-
 
 class fenics_heat_2d(ptype):
     dtype_u = fenics_mesh
     dtype_f = rhs_fenics_mesh
     
-    def getDofCount(self):
-        return len(Function(self.V).vector()[:])
-    
     def __init__(self, mesh, function_space, forcing_term_expr, solution_expr, coupling_boundary, remaining_boundary, coupling_expr, precice_ref, participant_name):
-        # Allow for fixing the boundary conditions for the residual computation
-        # Necessary if imex-1st-order-mass sweeper is used
-        self.fix_bc_for_residual = True
-        
         # Set precice reference and coupling expression reference to update coupling boundary 
         # at every step within pySDC
         self.precice = precice_ref
@@ -33,8 +24,7 @@ class fenics_heat_2d(ptype):
         # invoke super init
         super(fenics_heat_2d, self).__init__(self.V)
         
-        # Not sure if needed
-        self._makeAttributeAndRegister('mesh', 'function_space', localVars=locals(), readOnly=True)
+        
         
         # Define Trial and Test function
         u = df.TrialFunction(self.V)
@@ -60,6 +50,11 @@ class fenics_heat_2d(ptype):
             self.couplingBC = df.DirichletBC(self.V, coupling_expr, coupling_boundary)
             
         self.remainingBC = df.DirichletBC(self.V, solution_expr, remaining_boundary)
+        
+        
+        # Allow for fixing the boundary conditions for the residual computation
+        # Necessary if imex-1st-order-mass sweeper is used
+        self.fix_bc_for_residual = True
         
         # define the homogeneous Dirichlet boundary for residual correction
         def FullBoundary(x, on_boundary):
