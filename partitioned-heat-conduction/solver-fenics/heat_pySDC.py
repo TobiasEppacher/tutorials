@@ -22,12 +22,6 @@ Heat equation with mixed boundary conditions. (Neumann problem)
   u = u_0             at t = 0
   u = 1 + x^2 + alpha*y^2 + \beta*t
   f = beta - 2 - 2*alpha
-
-For information on the partitioned heat conduction problem using higher-order implicit Runge-Kutta methods see
-* "Wullenweber, Nikola. High-order time stepping schemes for solving partial differential equations with FEniCS. Bachelor's thesis at Technical University of Munich, 2021. URL: https://mediatum.ub.tum.de/1621360"
-* "Vinnitchenko, Niklas. Evaluation of higher-order coupling schemes with FEniCS-preCICE. Bachelor's thesis at Technical University of Munich, 2023. URL: https://mediatum.ub.tum.de/1732367"
-
-The implementation of the higher-order implicit Runge-Kutta methods is based on: https://github.com/NikoWul/FenicsIrksome
 """
 
 from __future__ import print_function, division
@@ -69,17 +63,10 @@ parser.add_argument("-e", "--error-tol", help="set error tolerance", type=float,
 args = parser.parse_args()
 participant_name = args.participantName
 
-# Time step size
-# Can be anything smaller then the preCICE time window size
-pySDC_dt = 0.25/1
 
 # preCICE error tolerance
 # Error is bounded by coupling accuracy. In theory we would obtain the analytical solution.
 error_tol = args.error_tol
-
-alpha = 3  # parameter alpha
-beta = 1.2  # parameter beta
-temporal_deg = 3  # temporal degree of the manufactured solution
 
 if participant_name == ProblemType.DIRICHLET.value:
     problem = ProblemType.DIRICHLET
@@ -87,7 +74,7 @@ if participant_name == ProblemType.DIRICHLET.value:
 elif participant_name == ProblemType.NEUMANN.value:
     problem = ProblemType.NEUMANN
     domain_part = DomainPart.RIGHT
-    exit("Neumann problem not supported with pySDC")
+    exit("Neumann problem not yet supported with pySDC")
 
 domain_mesh, coupling_boundary, remaining_boundary = get_geometry(domain_part)
 
@@ -100,6 +87,15 @@ W = V_g.sub(0).collapse()
 ##################################################################
 # Problem definition and preCICE initialization
 ##################################################################
+
+# Time step size
+# Should be integer fraction of the used time window size
+pySDC_dt = 0.25/1
+
+# Manufactured solution parameters
+alpha = 3  # parameter alpha
+beta = 1.2  # parameter beta
+temporal_deg = 3  # temporal degree of the manufactured solution
 
 # Define boundary conditions
 # create sympy expression of manufactured solution
@@ -228,7 +224,6 @@ problem_params['participant_name'] = participant_name
 
 # initialize controller parameters
 controller_params = dict()
-controller_params['logger_level'] = 30
 
 # fill description dictionary for easy step instantiation
 description = dict()
@@ -273,10 +268,10 @@ while precice.is_coupling_ongoing():
     precice_dt = precice.get_max_time_step_size()
     dt.assign(np.min([pySDC_dt, precice_dt]))
 
-    # Update start and end time of the current preCICE time step within
+    # Update start time of the current preCICE time step within
     # the problem class.
-    # This is necessary, that the coupling expression update, done in the problem class
-    # itself is executed correctly.
+    # This is necessary, that the coupling expression update in the problem class
+    # is executed correctly.
     P.set_t_start(t)
 
     # Retrieve the result at the end of the timestep from pySDC
