@@ -49,7 +49,7 @@
   <coupling-scheme:serial-implicit>
     <participants first="Dirichlet" second="Neumann" />
     <max-time value="1.0" />
-    <time-window-size value="0.25" />
+    <time-window-size value="1.0" />
     <max-iterations value="100" />
     <exchange
       data="Heat-Flux"
@@ -65,8 +65,8 @@
       to="Dirichlet"
       initialize="true"
       substeps="true" />
-    <relative-convergence-measure data="Heat-Flux" mesh="Dirichlet-Mesh" limit="1e-10" />
-    <relative-convergence-measure data="Temperature" mesh="Neumann-Mesh" limit="1e-10" />
+    <relative-convergence-measure data="Heat-Flux" mesh="Dirichlet-Mesh" limit="1e-11" />
+    <relative-convergence-measure data="Temperature" mesh="Neumann-Mesh" limit="1e-11" />
     <!-- <acceleration:IQN-ILS>
       <data name="Temperature" mesh="Neumann-Mesh" />
       <initial-relaxation value="0.1" />
@@ -75,7 +75,7 @@
       <filter type="QR2" limit="1e-3" />
     </acceleration:IQN-ILS> -->
     <acceleration:constant>
-      <relaxation value="0.5" />
+      <relaxation value="0.375" />
     </acceleration:constant>
   </coupling-scheme:serial-implicit>
 </precice-configuration>

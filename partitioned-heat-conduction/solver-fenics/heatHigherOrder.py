@@ -67,13 +67,13 @@ parser.add_argument("-e", "--error-tol", help="set error tolerance", type=float,
 args = parser.parse_args()
 participant_name = args.participantName
 
-fenics_dt = 0.015625/1  # time step size
+fenics_dt = 1.0/1  # time step size
 # Error is bounded by coupling accuracy. In theory we would obtain the analytical solution.
 error_tol = args.error_tol
 
 alpha = 3  # parameter alpha
 beta = 1.2  # parameter beta
-temporal_deg = 3
+temporal_deg = 2
 
 if participant_name == ProblemType.DIRICHLET.value:
     problem = ProblemType.DIRICHLET
@@ -108,7 +108,7 @@ u_n.rename("Temperature", "")
 
 # time stepping setup
 # scheme
-tsm = GaussLegendre(2)
+tsm = GaussLegendre(3)
 # depending on tsm, we define the trial and test function space
 if tsm.num_stages == 1:
     Vbig = V

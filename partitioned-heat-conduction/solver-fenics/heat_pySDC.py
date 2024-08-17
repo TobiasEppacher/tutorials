@@ -90,12 +90,12 @@ W = V_g.sub(0).collapse()
 
 # Time step size
 # Should be integer fraction of the used time window size
-pySDC_dt = 0.25/1
+pySDC_dt = 1.0/1
 
 # Manufactured solution parameters
 alpha = 3  # parameter alpha
 beta = 1.2  # parameter beta
-temporal_deg = 3  # temporal degree of the manufactured solution
+temporal_deg = 2  # temporal degree of the manufactured solution
 
 # Define boundary conditions
 # create sympy expression of manufactured solution
@@ -198,12 +198,12 @@ For more information on pySDC, see also "https://parallel-in-time.org/pySDC/"
 
 # initialize level parameters
 level_params = dict()
-level_params['restol'] = 1e-10
+level_params['restol'] = 1e-11
 level_params['dt'] = pySDC_dt
 
 # initialize step parameters
 step_params = dict()
-step_params['maxiter'] = 5
+step_params['maxiter'] = 10
 
 # initialize sweeper parameters
 sweeper_params = dict()
