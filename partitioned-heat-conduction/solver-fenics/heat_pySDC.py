@@ -90,7 +90,9 @@ W = V_g.sub(0).collapse()
 
 # Time step size
 # Should be integer fraction of the used time window size
-pySDC_dt = 1.0/1
+time_window_size = 0.25
+waveform_deg = 3
+pySDC_dt = time_window_size/waveform_deg
 
 # Manufactured solution parameters
 alpha = 3  # parameter alpha
@@ -203,7 +205,7 @@ level_params['dt'] = pySDC_dt
 
 # initialize step parameters
 step_params = dict()
-step_params['maxiter'] = 10
+step_params['maxiter'] = 40
 
 # initialize sweeper parameters
 sweeper_params = dict()
@@ -224,6 +226,7 @@ problem_params['participant_name'] = participant_name
 
 # initialize controller parameters
 controller_params = dict()
+controller_params['logger_level'] = 30
 
 # fill description dictionary for easy step instantiation
 description = dict()

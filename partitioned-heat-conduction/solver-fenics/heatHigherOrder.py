@@ -67,7 +67,9 @@ parser.add_argument("-e", "--error-tol", help="set error tolerance", type=float,
 args = parser.parse_args()
 participant_name = args.participantName
 
-fenics_dt = 1.0/1  # time step size
+time_window_size = 0.25
+waveform_deg = 3
+fenics_dt = time_window_size/waveform_deg  # time step size
 # Error is bounded by coupling accuracy. In theory we would obtain the analytical solution.
 error_tol = args.error_tol
 
