@@ -90,20 +90,25 @@ W = V_g.sub(0).collapse()
 
 # Time step size
 # Should be integer fraction of the used time window size
-time_window_size = 0.25
-waveform_deg = 3
+time_window_size = 1.0
+waveform_deg = 1
 pySDC_dt = time_window_size/waveform_deg
 
 # Manufactured solution parameters
 alpha = 3  # parameter alpha
 beta = 1.2  # parameter beta
-temporal_deg = 2  # temporal degree of the manufactured solution
+temporal_deg = 4  # temporal degree of the manufactured solution
 
 # Define boundary conditions
 # create sympy expression of manufactured solution
 x_sp, y_sp, t_sp = sp.symbols(['x[0]', 'x[1]', 't'])
+
 u_D_sp = 1 + x_sp * x_sp + alpha * y_sp * y_sp + beta * (t_sp ** temporal_deg)
-u_D = Expression(sp.ccode(u_D_sp), degree=2, alpha=alpha, beta=beta, t=0)
+u_D = Expression(sp.ccode(u_D_sp), degree=2, alpha=alpha, beta=beta, temporal_deg=temporal_deg, t=0)
+
+#u_D_sp = 1 + (1 + sp.sin(t_sp)) * x_sp * x_sp + alpha * y_sp * y_sp + beta * t_sp
+#u_D = Expression(sp.ccode(u_D_sp), degree=2, alpha=alpha, beta=beta, t=0)
+
 u_D_function = interpolate(u_D, V)
 f_sp = u_D_sp.diff(t_sp) - u_D_sp.diff(x_sp).diff(x_sp) - u_D_sp.diff(y_sp).diff(y_sp)
 forcing_expr = Expression(sp.ccode(f_sp), degree=2, alpha=alpha, beta=beta, t=0)
