@@ -67,15 +67,15 @@ parser.add_argument("-e", "--error-tol", help="set error tolerance", type=float,
 args = parser.parse_args()
 participant_name = args.participantName
 
-time_window_size = 1.0
-waveform_deg = 1
+time_window_size = 0.0625
+waveform_deg = 2
 fenics_dt = time_window_size/waveform_deg  # time step size
 # Error is bounded by coupling accuracy. In theory we would obtain the analytical solution.
 error_tol = args.error_tol
 
 alpha = 3  # parameter alpha
 beta = 1.2  # parameter beta
-temporal_deg = 4
+#temporal_deg = 4
 
 if participant_name == ProblemType.DIRICHLET.value:
     problem = ProblemType.DIRICHLET
@@ -95,11 +95,11 @@ W = V_g.sub(0).collapse()
 # create sympy expression of manufactured solution
 x_sp, y_sp, t_sp = sp.symbols(['x[0]', 'x[1]', 't'])
 
-u_D_sp = 1 + x_sp * x_sp + alpha * y_sp * y_sp + beta * (t_sp ** temporal_deg)
-u_D = Expression(sp.ccode(u_D_sp), degree=2, alpha=alpha, beta=beta, temporal_deg=temporal_deg, t=0)
+#u_D_sp = 1 + x_sp * x_sp + alpha * y_sp * y_sp + beta * (t_sp ** temporal_deg)
+#u_D = Expression(sp.ccode(u_D_sp), degree=2, alpha=alpha, beta=beta, temporal_deg=temporal_deg, t=0)
 
-#u_D_sp = 1 + (1 + sp.sin(t_sp)) * x_sp * x_sp + alpha * y_sp * y_sp + beta * t_sp
-#u_D = Expression(sp.ccode(u_D_sp), degree=2, alpha=alpha, beta=beta, t=0)
+u_D_sp = 1 + (1 + sp.sin(t_sp)) * x_sp * x_sp + alpha * y_sp * y_sp + beta * t_sp
+u_D = Expression(sp.ccode(u_D_sp), degree=2, alpha=alpha, beta=beta, t=0)
 
 u_D_function = interpolate(u_D, V)
 
