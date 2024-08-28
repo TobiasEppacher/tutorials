@@ -131,6 +131,3 @@ class fenics_heat_2d(ptype):
         me = self.dtype_u(interpolate(self.solution_expr, self.V), val=self.V)
         return me
 
-    def set_t_start(self, t_start):
-        self.t_start = t_start
-
